@@ -21,7 +21,7 @@ This is a project designed as a honeypot to detect the usage of tools such as Re
     pip install -r requirements.txt
     ```
 
-3. Change config.properties to have the webhook URL.
+3. Change config.properties to have the webhook URL. Ensure the proper network interface is running. If you get an error, check the table that is created right away on run to get the proper name.
 
 4. ????
 
