@@ -48,3 +48,4 @@ python requester.py --protocol all
 ## TODOs
 
 - Add NBT-NS support (couldn't get it to work)
+- Get containerization to work

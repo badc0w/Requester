@@ -21,7 +21,7 @@ WEBHOOK_URL = config.get('DEFAULT', 'WEBHOOK_URL')
 # List available interfaces.
 print("Available Interfaces on Windows:")
 show_interfaces()  
-WINDOWS_INTERFACE = "Realtek Gaming 2.5GbE Family Controller"  # Change this to match the "Name" from the proper interface from above
+WINDOWS_INTERFACE = ""  # Change this to match the "Name" from the proper interface from above
 
 # Get source IP and MAC for this interface.
 source_ip = get_if_addr(WINDOWS_INTERFACE)
