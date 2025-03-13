@@ -17,11 +17,22 @@ logging.basicConfig(
 config = configparser.ConfigParser()
 config.read('config.properties')
 WEBHOOK_URL = config.get('DEFAULT', 'WEBHOOK_URL')
-
+WINDOWS_INTERFACE = config.get('DEFAULT', 'INTERFACE')
+logging.info(r"""
+______                          _            
+| ___ \                        | |           
+| |_/ /___  __ _ _   _  ___ ___| |_ ___ _ __ 
+|    // _ \/ _` | | | |/ _ / __| __/ _ | '__|
+| |\ |  __| (_| | |_| |  __\__ | ||  __| |   
+\_| \_\___|\__, |\__,_|\___|___/\__\___|_|   
+              | |                            
+              |_|                            
+              """)
+# Only print available interfaces if debugging enabled
+if logging.getLogger().isEnabledFor(logging.DEBUG):
 # List available interfaces.
-print("Available Interfaces on Windows:")
-show_interfaces()  
-WINDOWS_INTERFACE = ""  # Change this to match the "Name" from the proper interface from above
+    print("Available Interfaces on Windows:")
+    show_interfaces()    # Change this to match the "Name" from the proper interface from above
 
 # Get source IP and MAC for this interface.
 source_ip = get_if_addr(WINDOWS_INTERFACE)
@@ -38,6 +49,7 @@ MDNS_PORT = 5353
 
 # Global variable to store the fake hostname
 fake_hostname = ""
+
 
 def generate_fake_hostname():
     return f"fake{random.randint(1000, 9999)}"
@@ -134,6 +146,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LLMNR/mDNS Honeypot")
     parser.add_argument("--protocol", choices=["llmnr", "mdns", "all"], required=True, help="Protocol to use (llmnr, mdns, or all)")
     args = parser.parse_args()
+    
 
     if args.protocol == "llmnr" or args.protocol == "all":
         llmnr_listener_thread = threading.Thread(target=capture_llmnr_responses)
