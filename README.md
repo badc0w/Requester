@@ -40,10 +40,13 @@ python requester.py --protocol all
 ## Screenshots
 
 - Requester Output
+  
 ![Alt text](img/Requester-Output.png?raw=true "Requester Output")
 - Responder Output
+  
 ![Alt text](img/Responder-Output.png?raw=true "Resonder Output")
 - Discord Webhook Output
+  
 ![Alt text](img/Discord-Output.png?raw=true "Discord Webhook Output")
 ## TODOs
 
