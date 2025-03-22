@@ -6,6 +6,12 @@ import threading
 import time
 import argparse
 import configparser
+import uuid
+from smbprotocol.connection import Connection
+from smbprotocol.session import Session
+
+# Set logging level for smbprotocol to WARNING to suppress detailed INFO messages
+logging.getLogger("smbprotocol").setLevel(logging.WARNING)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,7 +74,20 @@ def send_fake_llmnr_request():
     logging.debug(f"Sending LLMNR request for: {fake_hostname}")
     sendp(packet, iface=WINDOWS_INTERFACE, verbose=False)
 
-def capture_llmnr_responses():
+def send_fake_credentials(target_ip):
+    fake_username = f"user_{fake_hostname}"
+    fake_password = f"pass_{fake_hostname}"
+    logging.info(f"Sending fake credentials to {target_ip} via SMB with username: {fake_username} and password: {fake_password}")
+    try:
+        connection = Connection(uuid.uuid4(), target_ip, 445)
+        connection.connect()
+        session = Session(connection, fake_username, fake_password)
+        session.connect()
+        logging.info("Fake credentials sent successfully via SMB.")
+    except Exception as e:
+        logging.error(f"Exception while sending fake credentials via SMB: {e}")
+
+def capture_llmnr_responses(poison=False):
     logging.debug("Listening for LLMNR responses...")
 
     def process_packet(packet):
@@ -78,6 +97,8 @@ def capture_llmnr_responses():
             json_summary = '{"timestamp": "%s", "src": "%s", "dst": "%s", "message": "LLMNR response seen for %s. Responder potentially running on %s"}' % (packet.time, packet[IP].src, packet[IP].dst, fake_hostname, packet[IP].src)
             logging.info(f"[!] {json_summary}")
             send_webhook_alert(json_summary)
+            if poison:
+                send_fake_credentials(packet[IP].src)
 
     sniff(filter=f"udp and port {LLMNR_PORT}", iface=WINDOWS_INTERFACE, prn=process_packet, store=0)
 
@@ -95,7 +116,7 @@ def send_fake_mdns_request():
     logging.debug(f"Sending mDNS request for: {fake_hostname}")
     sendp(packet, iface=WINDOWS_INTERFACE, verbose=False)
 
-def capture_mdns_responses():
+def capture_mdns_responses(poison=False):
     logging.debug("Listening for mDNS responses...")
 
     def process_packet(packet):
@@ -109,6 +130,8 @@ def capture_mdns_responses():
                     json_summary = '{"timestamp": "%s", "src": "%s", "dst": "%s", "message": "mDNS response seen for %s. Responder potentially running on %s"}' % (packet.time, packet[IP].src, packet[IP].dst, fake_hostname, packet[IP].src)
                     logging.info(f"[!] {json_summary}")
                     send_webhook_alert(json_summary)
+                    if poison:
+                        send_fake_credentials(packet[IP].src)
                     break
 
     sniff(filter=f"udp and port {MDNS_PORT}", iface=WINDOWS_INTERFACE, prn=process_packet, store=0)
@@ -179,6 +202,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LLMNR/mDNS Honeypot")
     parser.add_argument("--protocol", choices=["llmnr", "mdns", "all"], help="Protocol to use (llmnr, mdns, or all)")
     parser.add_argument("--sniff", action="store_true", help="Sniff mode to detect IPs responding to multiple names")
+    parser.add_argument("--poison", action="store_true", help="Respond to the responses with fake credentials")
     args = parser.parse_args()
     
     if args.sniff:
@@ -187,7 +211,7 @@ if __name__ == "__main__":
         if not args.protocol:
             parser.error("the following arguments are required: --protocol")
         if args.protocol == "llmnr" or args.protocol == "all":
-            llmnr_listener_thread = threading.Thread(target=capture_llmnr_responses)
+            llmnr_listener_thread = threading.Thread(target=lambda: capture_llmnr_responses(poison=args.poison))
             llmnr_listener_thread.daemon = True
             llmnr_listener_thread.start()
             
@@ -197,7 +221,7 @@ if __name__ == "__main__":
             llmnr_sender_thread.start()
 
         if args.protocol == "mdns" or args.protocol == "all":
-            mdns_listener_thread = threading.Thread(target=capture_mdns_responses)
+            mdns_listener_thread = threading.Thread(target=lambda: capture_mdns_responses(poison=args.poison))
             mdns_listener_thread.daemon = True
             mdns_listener_thread.start()
             

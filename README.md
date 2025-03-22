@@ -3,7 +3,10 @@
 This is a project designed as a honeypot to detect the usage of tools such as Responder (https://github.com/lgandx/Responder). It periodically sends out LLMNR and mDNS requests for fake resources, prompting tools like Responder to respond. It is setup to send JSON via a webhook.
 
 LLMNR/mDNS is specified using the --protocol argument. 
+
 The --sniff argument can be used to only listen for responses from a single IP for multiple resource names (an indicator Responder may be running at that IP). This is a stealthier approach as it doesn't send requests that would show up in Responder for the attacker to see.
+
+The --poison argument can be added to the honeypot to send fake credentials generated based off the fake hostname to the host running Responder using SMB. POISON THE POISONER.
 
 ## Requirements
 
@@ -35,10 +38,11 @@ The --sniff argument can be used to only listen for responses from a single IP f
 Run the script with the desired protocol:
 
 ```sh
-python requester.py --protocol llmnr
-python requester.py --protocol mdns
-python requester.py --protocol all
+python requester.py --protocol llmnr (--poison)
+python requester.py --protocol mdns (--poison)
+python requester.py --protocol all (--poison)
 python requester.py --sniff
+
 ```
 
 ## Screenshots
