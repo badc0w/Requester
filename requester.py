@@ -9,6 +9,7 @@ import configparser
 import uuid
 from smbprotocol.connection import Connection
 from smbprotocol.session import Session
+from smbprotocol.exceptions import SMBException
 
 # Set logging level for smbprotocol to WARNING to suppress detailed INFO messages
 logging.getLogger("smbprotocol").setLevel(logging.WARNING)
@@ -84,6 +85,11 @@ def send_fake_credentials(target_ip):
         session = Session(connection, fake_username, fake_password)
         session.connect()
         logging.info("Fake credentials sent successfully via SMB.")
+    except SMBException as e:
+        if "STATUS_ACCESS_DENIED" in str(e):
+            logging.debug(f"Expected access denied error while sending fake credentials via SMB: {e}")
+        else:
+            logging.error(f"SMBException while sending fake credentials via SMB: {e}")
     except Exception as e:
         logging.error(f"Exception while sending fake credentials via SMB: {e}")
 
