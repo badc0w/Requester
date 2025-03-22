@@ -56,7 +56,7 @@ MDNS_PORT = 5353
 
 # Global variable to store the fake hostname
 fake_hostname = ""
-
+flooding = False
 
 def generate_fake_hostname():
     return f"fake{random.randint(1000, 9999)}"
@@ -75,7 +75,7 @@ def send_fake_llmnr_request():
     logging.debug(f"Sending LLMNR request for: {fake_hostname}")
     sendp(packet, iface=WINDOWS_INTERFACE, verbose=False)
 
-def send_fake_credentials(target_ip):
+def send_fake_credentials(target_ip, fake_hostname):
     fake_username = f"user_{fake_hostname}"
     fake_password = f"pass_{fake_hostname}"
     logging.info(f"Sending fake credentials to {target_ip} via SMB with username: {fake_username} and password: {fake_password}")
@@ -91,9 +91,23 @@ def send_fake_credentials(target_ip):
         else:
             logging.error(f"SMBException while sending fake credentials via SMB: {e}")
     except Exception as e:
-        logging.error(f"Exception while sending fake credentials via SMB: {e}")
+        if "No connection could be made because the target machine actively refused it" in str(e):
+            logging.info(f"Responder stopped on {target_ip}. Stopping flood.")
+            global flooding
+            flooding = False
+        else:
+            logging.error(f"Exception while sending fake credentials via SMB: {e}")
 
-def capture_llmnr_responses(poison=False):
+def flood_responder(target_ip):
+    global flooding
+    flooding = True
+    logging.info(f"Flooding {target_ip} with SMB authentication requests")
+    while flooding:
+        fake_hostname = generate_fake_hostname()
+        send_fake_credentials(target_ip, fake_hostname)
+        time.sleep(0.1)  # Adjust the sleep time as needed
+
+def capture_llmnr_responses(poison=False, flood=False):
     logging.debug("Listening for LLMNR responses...")
 
     def process_packet(packet):
@@ -103,8 +117,12 @@ def capture_llmnr_responses(poison=False):
             json_summary = '{"timestamp": "%s", "src": "%s", "dst": "%s", "message": "LLMNR response seen for %s. Responder potentially running on %s"}' % (packet.time, packet[IP].src, packet[IP].dst, fake_hostname, packet[IP].src)
             logging.info(f"[!] {json_summary}")
             send_webhook_alert(json_summary)
-            if poison:
-                send_fake_credentials(packet[IP].src)
+            if flood:
+                global flooding
+                flooding = False  # Stop sending further requests
+                flood_responder(packet[IP].src)
+            elif poison:
+                send_fake_credentials(packet[IP].src, fake_hostname)
 
     sniff(filter=f"udp and port {LLMNR_PORT}", iface=WINDOWS_INTERFACE, prn=process_packet, store=0)
 
@@ -122,7 +140,7 @@ def send_fake_mdns_request():
     logging.debug(f"Sending mDNS request for: {fake_hostname}")
     sendp(packet, iface=WINDOWS_INTERFACE, verbose=False)
 
-def capture_mdns_responses(poison=False):
+def capture_mdns_responses(poison=False, flood=False):
     logging.debug("Listening for mDNS responses...")
 
     def process_packet(packet):
@@ -136,8 +154,12 @@ def capture_mdns_responses(poison=False):
                     json_summary = '{"timestamp": "%s", "src": "%s", "dst": "%s", "message": "mDNS response seen for %s. Responder potentially running on %s"}' % (packet.time, packet[IP].src, packet[IP].dst, fake_hostname, packet[IP].src)
                     logging.info(f"[!] {json_summary}")
                     send_webhook_alert(json_summary)
-                    if poison:
-                        send_fake_credentials(packet[IP].src)
+                    if flood:
+                        global flooding
+                        flooding = False  # Stop sending further requests
+                        flood_responder(packet[IP].src)
+                    elif poison:
+                        send_fake_credentials(packet[IP].src, fake_hostname)
                     break
 
     sniff(filter=f"udp and port {MDNS_PORT}", iface=WINDOWS_INTERFACE, prn=process_packet, store=0)
@@ -209,6 +231,7 @@ if __name__ == "__main__":
     parser.add_argument("--protocol", choices=["llmnr", "mdns", "all"], help="Protocol to use (llmnr, mdns, or all)")
     parser.add_argument("--sniff", action="store_true", help="Sniff mode to detect IPs responding to multiple names")
     parser.add_argument("--poison", action="store_true", help="Respond to the responses with fake credentials")
+    parser.add_argument("--flood", action="store_true", help="Flood the IP running Responder with SMB auth requests")
     args = parser.parse_args()
     
     if args.sniff:
@@ -217,7 +240,7 @@ if __name__ == "__main__":
         if not args.protocol:
             parser.error("the following arguments are required: --protocol")
         if args.protocol == "llmnr" or args.protocol == "all":
-            llmnr_listener_thread = threading.Thread(target=lambda: capture_llmnr_responses(poison=args.poison))
+            llmnr_listener_thread = threading.Thread(target=lambda: capture_llmnr_responses(poison=args.poison, flood=args.flood))
             llmnr_listener_thread.daemon = True
             llmnr_listener_thread.start()
             
@@ -227,7 +250,7 @@ if __name__ == "__main__":
             llmnr_sender_thread.start()
 
         if args.protocol == "mdns" or args.protocol == "all":
-            mdns_listener_thread = threading.Thread(target=lambda: capture_mdns_responses(poison=args.poison))
+            mdns_listener_thread = threading.Thread(target=lambda: capture_mdns_responses(poison=args.poison, flood=args.flood))
             mdns_listener_thread.daemon = True
             mdns_listener_thread.start()
             
@@ -241,3 +264,4 @@ if __name__ == "__main__":
                 time.sleep(1)
         except KeyboardInterrupt:
             logging.info("\nExiting honeypot.")
+            flooding = False  # Stop flooding if the script is interrupted

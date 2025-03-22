@@ -8,6 +8,8 @@ The --sniff argument can be used to only listen for responses from a single IP f
 
 The --poison argument can be added to the honeypot to send fake credentials generated based off the fake hostname to the host running Responder using SMB. POISON THE POISONER.
 
+The --flood argument will stop sending requests when an IP running Responder is detected. It will then flood the IP with SMB authentication requests. This will continue until it receives an error indicating Responder is stopped. It will restart automatically if Responder is restarted.
+
 ## Requirements
 
 - Python 3
