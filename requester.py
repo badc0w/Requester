@@ -142,35 +142,72 @@ def send_webhook_alert(message: str):
     except Exception as e:
         logging.error(f"Exception while sending webhook: {e}")        
 
+def sniff_mode():
+    ip_name_table = {}
+    seen_combos = set()
+    excluded_substrings = ["_tcp.local"]
+
+    def log_ip_name(ip, name):
+        if any(substring in name for substring in excluded_substrings):
+            return
+        
+        if ip not in ip_name_table:
+            ip_name_table[ip] = set()
+        ip_name_table[ip].add(name)
+        
+        combo = (ip, name)
+        if combo not in seen_combos:
+            seen_combos.add(combo)
+            print(f"New IP/Name combo: {ip} -> {name}")
+            if len(ip_name_table[ip]) > 1:
+                alert_message = f"Alert: IP {ip} is responding to multiple names: {ip_name_table[ip]}"
+                print(alert_message)
+                json_summary = '{"timestamp": "%s", "src": "%s", "dst": "%s", "message": "%s"}' % (time.strftime("%Y-%m-%d %H:%M:%S"), ip, "N/A", alert_message)
+                send_webhook_alert(json_summary)
+
+    def process_packet(packet):
+        if packet.haslayer(IP) and packet.haslayer(DNS) and packet[DNS].qr == 1:  # DNS response
+            for i in range(packet[DNS].ancount):
+                answer = packet[DNS].an[i]
+                ip = packet[IP].src
+                name = answer.rrname.decode()
+                log_ip_name(ip, name)
+
+    sniff(filter="udp port 5353 or udp port 5355", prn=process_packet, store=0)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LLMNR/mDNS Honeypot")
-    parser.add_argument("--protocol", choices=["llmnr", "mdns", "all"], required=True, help="Protocol to use (llmnr, mdns, or all)")
+    parser.add_argument("--protocol", choices=["llmnr", "mdns", "all"], help="Protocol to use (llmnr, mdns, or all)")
+    parser.add_argument("--sniff", action="store_true", help="Sniff mode to detect IPs responding to multiple names")
     args = parser.parse_args()
     
+    if args.sniff:
+        sniff_mode()
+    else:
+        if not args.protocol:
+            parser.error("the following arguments are required: --protocol")
+        if args.protocol == "llmnr" or args.protocol == "all":
+            llmnr_listener_thread = threading.Thread(target=capture_llmnr_responses)
+            llmnr_listener_thread.daemon = True
+            llmnr_listener_thread.start()
+            
+            logging.info("Starting LLMNR honeypot...")
+            llmnr_sender_thread = threading.Thread(target=lambda: send_fake_llmnr_request_loop())
+            llmnr_sender_thread.daemon = True
+            llmnr_sender_thread.start()
 
-    if args.protocol == "llmnr" or args.protocol == "all":
-        llmnr_listener_thread = threading.Thread(target=capture_llmnr_responses)
-        llmnr_listener_thread.daemon = True
-        llmnr_listener_thread.start()
-        
-        logging.info("Starting LLMNR honeypot...")
-        llmnr_sender_thread = threading.Thread(target=lambda: send_fake_llmnr_request_loop())
-        llmnr_sender_thread.daemon = True
-        llmnr_sender_thread.start()
+        if args.protocol == "mdns" or args.protocol == "all":
+            mdns_listener_thread = threading.Thread(target=capture_mdns_responses)
+            mdns_listener_thread.daemon = True
+            mdns_listener_thread.start()
+            
+            logging.info("Starting mDNS honeypot...")
+            mdns_sender_thread = threading.Thread(target=lambda: send_fake_mdns_request_loop())
+            mdns_sender_thread.daemon = True
+            mdns_sender_thread.start()
 
-    if args.protocol == "mdns" or args.protocol == "all":
-        mdns_listener_thread = threading.Thread(target=capture_mdns_responses)
-        mdns_listener_thread.daemon = True
-        mdns_listener_thread.start()
-        
-        logging.info("Starting mDNS honeypot...")
-        mdns_sender_thread = threading.Thread(target=lambda: send_fake_mdns_request_loop())
-        mdns_sender_thread.daemon = True
-        mdns_sender_thread.start()
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logging.info("\nExiting honeypot.")
-
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logging.info("\nExiting honeypot.")
