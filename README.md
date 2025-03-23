@@ -40,9 +40,9 @@ The --flood argument will stop sending requests when an IP running Responder is 
 Run the script with the desired protocol:
 
 ```sh
-python requester.py --protocol llmnr (--poison)
-python requester.py --protocol mdns (--poison)
-python requester.py --protocol all (--poison)
+python requester.py --protocol llmnr (--poison) (--flood)
+python requester.py --protocol mdns (--poison) (--flood)
+python requester.py --protocol all (--poison) (--flood)
 python requester.py --sniff
 
 ```
