@@ -7,6 +7,8 @@ import time
 import argparse
 import configparser
 import uuid
+import csv
+import string
 from smbprotocol.connection import Connection
 from smbprotocol.session import Session
 from smbprotocol.exceptions import SMBException
@@ -37,7 +39,7 @@ ______                          _
               """)
 # Only print available interfaces if debugging enabled
 if logging.getLogger().isEnabledFor(logging.DEBUG):
-# List available interfaces.
+    # List available interfaces.
     print("Available Interfaces on Windows:")
     show_interfaces()    # Change this to match the "Name" from the proper interface from above
 
@@ -58,8 +60,31 @@ MDNS_PORT = 5353
 fake_hostname = ""
 flooding = False
 
+# Read names from CSV file
+first_names = []
+last_names = []
+with open('names.csv', newline='') as csvfile:
+    reader = csv.reader(csvfile)
+    for row in reader:
+        first_names.append(row[0])
+        last_names.append(row[1])
+
+# Read hostnames from CSV file
+hostnames = []
+with open('resources.csv', newline='') as csvfile:
+    reader = csv.reader(csvfile)
+    for row in reader:
+        hostnames.append(row[0])
+
+# Debug logging to check the contents of the hostnames list
+logging.debug(f"Hostnames loaded: {hostnames}")
+
 def generate_fake_hostname():
-    return f"fake{random.randint(1000, 9999)}"
+    return random.choice(hostnames)
+
+def generate_random_password(length=12):
+    characters = string.ascii_letters + string.digits + string.punctuation
+    return ''.join(random.choice(characters) for i in range(length))
 
 def send_fake_llmnr_request():
     global fake_hostname
@@ -75,9 +100,11 @@ def send_fake_llmnr_request():
     logging.debug(f"Sending LLMNR request for: {fake_hostname}")
     sendp(packet, iface=WINDOWS_INTERFACE, verbose=False)
 
-def send_fake_credentials(target_ip, fake_hostname):
-    fake_username = f"user_{fake_hostname}"
-    fake_password = f"pass_{fake_hostname}"
+def send_fake_credentials(target_ip):
+    first_name = random.choice(first_names)
+    last_name = random.choice(last_names)
+    fake_username = f"{first_name.lower()}.{last_name.lower()}"
+    fake_password = generate_random_password()
     logging.info(f"Sending fake credentials to {target_ip} via SMB with username: {fake_username} and password: {fake_password}")
     try:
         connection = Connection(uuid.uuid4(), target_ip, 445)
@@ -103,8 +130,7 @@ def flood_responder(target_ip):
     flooding = True
     logging.info(f"Flooding {target_ip} with SMB authentication requests")
     while flooding:
-        fake_hostname = generate_fake_hostname()
-        send_fake_credentials(target_ip, fake_hostname)
+        send_fake_credentials(target_ip)
         time.sleep(0.1)  # Adjust the sleep time as needed
 
 def capture_llmnr_responses(poison=False, flood=False):
@@ -113,7 +139,8 @@ def capture_llmnr_responses(poison=False, flood=False):
     def process_packet(packet):
         summary = packet.summary()
         logging.debug("Packet captured: " + summary)
-        if "llmnrresponse 'fake" in summary.lower():
+        hostname_without_local = fake_hostname.split(".")[0].lower()
+        if f"llmnrresponse '{hostname_without_local}" in summary.lower():
             json_summary = '{"timestamp": "%s", "src": "%s", "dst": "%s", "message": "LLMNR response seen for %s. Responder potentially running on %s"}' % (packet.time, packet[IP].src, packet[IP].dst, fake_hostname, packet[IP].src)
             logging.info(f"[!] {json_summary}")
             send_webhook_alert(json_summary)
@@ -122,7 +149,7 @@ def capture_llmnr_responses(poison=False, flood=False):
                 flooding = False  # Stop sending further requests
                 flood_responder(packet[IP].src)
             elif poison:
-                send_fake_credentials(packet[IP].src, fake_hostname)
+                send_fake_credentials(packet[IP].src)
 
     sniff(filter=f"udp and port {LLMNR_PORT}", iface=WINDOWS_INTERFACE, prn=process_packet, store=0)
 
@@ -150,7 +177,8 @@ def capture_mdns_responses(poison=False, flood=False):
         if packet.haslayer(DNS) and packet[DNS].ancount > 0:
             for i in range(packet[DNS].ancount):
                 answer = packet[DNS].an[i]
-                if "fake" in answer.rrname.decode().lower():
+                hostname_without_local = fake_hostname.split(".")[0].lower()
+                if hostname_without_local in answer.rrname.decode().lower():
                     json_summary = '{"timestamp": "%s", "src": "%s", "dst": "%s", "message": "mDNS response seen for %s. Responder potentially running on %s"}' % (packet.time, packet[IP].src, packet[IP].dst, fake_hostname, packet[IP].src)
                     logging.info(f"[!] {json_summary}")
                     send_webhook_alert(json_summary)
@@ -159,7 +187,7 @@ def capture_mdns_responses(poison=False, flood=False):
                         flooding = False  # Stop sending further requests
                         flood_responder(packet[IP].src)
                     elif poison:
-                        send_fake_credentials(packet[IP].src, fake_hostname)
+                        send_fake_credentials(packet[IP].src)
                     break
 
     sniff(filter=f"udp and port {MDNS_PORT}", iface=WINDOWS_INTERFACE, prn=process_packet, store=0)

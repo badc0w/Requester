@@ -1,6 +1,6 @@
 # Honeypot for LLMNR, mDNS, and NBT-NS
 
-This is a project designed as a honeypot to detect the usage of tools such as Responder (https://github.com/lgandx/Responder). It periodically sends out LLMNR and mDNS requests for fake resources, prompting tools like Responder to respond. It is setup to send JSON via a webhook.
+This is a project designed as a honeypot to detect the usage of tools such as Responder (https://github.com/lgandx/Responder). It periodically sends out LLMNR and mDNS requests for fake resources (taken randomly from names.csv and resources.csv), prompting tools like Responder to respond. It is setup to send JSON via a webhook.
 
 LLMNR/mDNS is specified using the --protocol argument. 
 
