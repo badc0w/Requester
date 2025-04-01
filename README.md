@@ -4,8 +4,6 @@ This is a project designed as a honeypot to detect the usage of tools such as Re
 
 LLMNR/mDNS is specified using the --protocol argument. 
 
-The --sniff argument can be used to only listen for responses from a single IP for multiple resource names (an indicator Responder may be running at that IP). This is a stealthier approach as it doesn't send requests that would show up in Responder for the attacker to see.
-
 The --poison argument can be added to the honeypot to send fake credentials generated based off the fake hostname to the host running Responder using SMB. POISON THE POISONER.
 
 The --flood argument will stop sending requests when an IP running Responder is detected. It will then flood the IP with SMB authentication requests. This will continue until it receives an error indicating Responder is stopped. It will restart automatically if Responder is restarted.
@@ -43,7 +41,6 @@ Run the script with the desired protocol:
 python requester.py --protocol llmnr (--poison) (--flood)
 python requester.py --protocol mdns (--poison) (--flood)
 python requester.py --protocol all (--poison) (--flood)
-python requester.py --sniff
 
 ```
 
